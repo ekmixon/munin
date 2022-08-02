@@ -34,7 +34,12 @@ def getVTInfo(hash, debug=False):
             if debug:
                 traceback.print_exc()
     if not response_dict_code.ok:
-        if debug or not ("error" in response_dict and "code" in response_dict["error"] and "NotFoundError" in response_dict["error"]["code"]):
+        if (
+            debug
+            or "error" not in response_dict
+            or "code" not in response_dict["error"]
+            or "NotFoundError" not in response_dict["error"]["code"]
+        ):
             print("[D] Received error message from VirusTotal: Status code %d, message %s" % (response_dict_code.status_code,  response_dict_code.content))
         info = getEmptyInfo()
         info['hash'] = hash
@@ -57,7 +62,7 @@ def getVTInfo(hash, debug=False):
 
 def getRetrohuntResults(retrohunt_id, no_comments=False, debug=False):
     headers = { 'x-apikey': VT_PUBLIC_API_KEY}
-    url = "%s/%s/matching_files?limit=500" % (RETROHUNT_URL, retrohunt_id)
+    url = f"{RETROHUNT_URL}/{retrohunt_id}/matching_files?limit=500"
     files = []
     while True:
         response = requests.get(url, headers=headers, proxies=PROXY)
@@ -69,7 +74,7 @@ def getRetrohuntResults(retrohunt_id, no_comments=False, debug=False):
         try:
             response_json = json.loads(response.content)
         except ValueError:
-            print("[E] Non-JSON response from VT: Message %s" % response.content)
+            print(f"[E] Non-JSON response from VT: Message {response.content}")
             break
 
         for file in response_json["data"]:
@@ -108,7 +113,7 @@ def convertSize(size_bytes):
     i = int(math.floor(math.log(size_bytes, 1024)))
     p = math.pow(1024, i)
     s = round(size_bytes / p, 2)
-    return "%s %s" % (s, size_name[i])
+    return f"{s} {size_name[i]}"
 
 def getEmptyInfo():
     return {
@@ -174,19 +179,21 @@ def processVirustotalSampleInfo(sample_info, debug=False):
         info['reputation'] = sample_info['attributes']['reputation']
 
         # Exiftool
-        if 'exiftool' in sample_info['attributes']:
-            if 'LegalCopyright' in sample_info['attributes']['exiftool']:
-                # Get copyright
-                if 'LegalCopyright' in sample_info['attributes']['exiftool']:
-                    info['copyright'] = sample_info['attributes']['exiftool']['LegalCopyright']
-                # Get description
-                if 'FileDescription' in sample_info['attributes']['exiftool']:
-                    info['description'] = sample_info['attributes']['exiftool']['FileDescription']
+        if (
+            'exiftool' in sample_info['attributes']
+            and 'LegalCopyright' in sample_info['attributes']['exiftool']
+        ):
+            info['copyright'] = sample_info['attributes']['exiftool']['LegalCopyright']
+            # Get description
+            if 'FileDescription' in sample_info['attributes']['exiftool']:
+                info['description'] = sample_info['attributes']['exiftool']['FileDescription']
         # PE Info
-        if 'pe_info' in sample_info['attributes']:
-            if 'imphash' in sample_info['attributes']['pe_info']:
-                # Get additional information
-                info['imphash'] = sample_info['attributes']['pe_info']['imphash']
+        if (
+            'pe_info' in sample_info['attributes']
+            and 'imphash' in sample_info['attributes']['pe_info']
+        ):
+            # Get additional information
+            info['imphash'] = sample_info['attributes']['pe_info']['imphash']
         # PE Signature
         if 'signature_info' in sample_info['attributes']:
             # Signer
@@ -223,16 +230,12 @@ def processVirustotalSampleInfo(sample_info, debug=False):
         virus_names = []
         info["vendor_results"] = {}
         for vendor in VENDORS:
-            if vendor in scans:
-                if scans[vendor]["result"]:
-                    virus_names.append("{0}: {1}".format(vendor, scans[vendor]["result"]))
-                    info["vendor_results"][vendor] = scans[vendor]["result"]
-                else:
-                    info["vendor_results"][vendor] = "-"
+            if vendor in scans and scans[vendor]["result"]:
+                virus_names.append("{0}: {1}".format(vendor, scans[vendor]["result"]))
+                info["vendor_results"][vendor] = scans[vendor]["result"]
             else:
                 info["vendor_results"][vendor] = "-"
-
-        if len(virus_names) > 0:
+        if virus_names:
             info["virus"] = " / ".join(virus_names)
 
     except Exception:
@@ -254,7 +257,7 @@ def searchVirustotalComments(sha256, debug=False):
         r_code_comments = requests.get(VT_COMMENT_API % sha256, headers=headers, proxies=PROXY)
         if not r_code_comments.ok:
             if debug:
-                print("[D] Could not query comments for sample %s" % sha256)
+                print(f"[D] Could not query comments for sample {sha256}")
             return info
 
         r_comments = json.loads(r_code_comments.content.decode("utf-8"))
@@ -282,6 +285,6 @@ def commentVTSample(resource, comment):
     response = requests.post('https://www.virustotal.com/vtapi/v2/comments/put', params=params, proxies=PROXY)
     response_json = response.json()
     if response_json['response_code'] != 1:
-        print("[E] Error posting comment: %s" % response_json['verbose_msg'])
+        print(f"[E] Error posting comment: {response_json['verbose_msg']}")
     else:
         printHighlighted("SUCCESSFULLY COMMENTED")

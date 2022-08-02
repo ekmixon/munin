@@ -13,9 +13,7 @@ def isIp(value):
     :return:
     """
     ip_pattern = r'^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\b$'
-    if re.match(ip_pattern, value):
-        return True
-    return False
+    return bool(re.match(ip_pattern, value))
 
 
 def is_private(ip):
@@ -25,9 +23,7 @@ def is_private(ip):
     :return:
     """
     ip = IP(ip)
-    if ip.iptype() == "PRIVATE":
-        return True
-    return False
+    return ip.iptype() == "PRIVATE"
 
 
 def is_resolvable(domain):
@@ -116,18 +112,17 @@ def generateResultFilename(inputFileName, outputFileName):
     alreadyExists = False
     # CLI
     if not inputFileName:
-        if not outputFileName:
-            resultFile = "check-results_{0}.csv".format(datetime.now().strftime("%Y-%m-%d"))
-        else:
-            resultFile = outputFileName
+        resultFile = outputFileName or "check-results_{0}.csv".format(
+            datetime.now().strftime("%Y-%m-%d")
+        )
+
         if os.path.exists(resultFile):
             alreadyExists = True
-    # Default
     else:
-        if not outputFileName:
-            resultFile = "check-results_{0}.csv".format(os.path.splitext(os.path.basename(inputFileName))[0])
-        else:
-            resultFile = outputFileName
+        resultFile = outputFileName or "check-results_{0}.csv".format(
+            os.path.splitext(os.path.basename(inputFileName))[0]
+        )
+
         if os.path.exists(resultFile):
             print("[+] Found results CSV from previous run: {0}".format(resultFile))
             print("[+] Appending results to file: {0}".format(resultFile))

@@ -36,19 +36,24 @@ def main():
     print("                                               \" \"'\\  ".ljust(80))
     print(" ".ljust(80))
     print("  Result Checker for Virustotal Retrohunts".ljust(80))
-    print(("  " + __AUTHOR__ + " - " + __VERSION__ + "").ljust(80))
+    print(f"  {__AUTHOR__} - {__VERSION__}".ljust(80))
     print(" ".ljust(80) + Style.RESET_ALL)
-    print(Style.RESET_ALL + " ")
+    print(f"{Style.RESET_ALL} ")
 
     parser = argparse.ArgumentParser(description='Retrohunt Checker')
     parser.add_argument('-r', help='Name for the queried retrohunt', metavar='retrohunt-name', default='')
-    parser.add_argument('-i', help='Name of the ini file that holds the VT API key', metavar='ini-file',
-                        default=os.path.dirname(os.path.abspath(__file__)) + '/munin.ini')
+    parser.add_argument(
+        '-i',
+        help='Name of the ini file that holds the VT API key',
+        metavar='ini-file',
+        default=f'{os.path.dirname(os.path.abspath(__file__))}/munin.ini',
+    )
+
     parser.add_argument('--csv-path', help='Write a CSV with the results', default='retrohunt_results.csv')
     parser.add_argument('--debug', action='store_true', default=False, help='Debug output')
     parser.add_argument('--comments', help='Download VirusTotal comments', action='store_true', default=False)
     parser.add_argument('--no-comments', help='Deprecated - set by default, doesn\'t do anything', default=False)
-    
+
     args = parser.parse_args()
 
     # PyMISP error handling > into Nirvana

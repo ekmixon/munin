@@ -60,14 +60,14 @@ def writeCSV(info, resultFile):
                 except KeyError as e:
                     field = "False"
                 try:
-                    field = str(field).replace(r'"', r'\"').replace("\n", " ")
+                    field = field.replace(r'"', r'\"').replace("\n", " ")
                 except AttributeError as e:
                     traceback.print_exc()
-                fh_results.write("%s;" % field)
+                fh_results.write(f"{field};")
             # Append vendor scan results
             for vendor in VENDORS:
                 if vendor in info['vendor_results']:
-                    fh_results.write("%s;" % info['vendor_results'][vendor])
+                    fh_results.write(f"{info['vendor_results'][vendor]};")
                 else:
                     fh_results.write("-;")
             fh_results.write('\n')
@@ -85,7 +85,7 @@ def writeCSVHeader(resultFile):
     """
     try:
         with open(resultFile, 'w') as fh_results:
-            fh_results.write("%s;" % ";".join(CSV_FIELD_ORDER))
+            fh_results.write(f'{";".join(CSV_FIELD_ORDER)};')
             fh_results.write("%s;\n" % ";".join(VENDORS))
     except Exception as e:
         print("[E] Cannot write export file {0}".format(resultFile))

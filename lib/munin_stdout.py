@@ -32,7 +32,7 @@ def printResult(info, count, total):
     # More VT info
     if "total" in info:
         # Result
-        info["result"] = "%s / %s" % (info["positives"], info["total"])
+        info["result"] = f'{info["positives"]} / {info["total"]}'
         if info["virus"] != "-":
             printHighlighted("VIRUS: {0}".format(info["virus"]))
         printHighlighted("TYPE: {1} SIZE: {2} FILENAMES: {0}".format(removeNonAsciiDrop(info["filenames"]),
@@ -56,7 +56,7 @@ def printResult(info, count, total):
         ), tag_color=True)
 
     # Print the highlighted result line
-    printHighlighted("RESULT: %s" % (info["result"]), hl_color=info["res_color"])
+    printHighlighted(f'RESULT: {info["result"]}', hl_color=info["res_color"])
 
 
 def printHighlighted(line, hl_color=Back.WHITE, tag_color=False):
@@ -112,11 +112,12 @@ def printPeInfo(sample_info):
     :return:
     """
     peInfo = [u'origname', u'description', u'copyright', u'signer']
-    outString = []
-    for k, v in sample_info.items():
-        if k in peInfo:
-            if v != '-':
-                outString.append("{0}: {1}".format(k.upper(), removeNonAsciiDrop(v)))
+    outString = [
+        "{0}: {1}".format(k.upper(), removeNonAsciiDrop(v))
+        for k, v in sample_info.items()
+        if k in peInfo and v != '-'
+    ]
+
     if " ".join(outString):
         printHighlighted(" ".join(outString))
 
@@ -133,5 +134,4 @@ def removeNonAsciiDrop(string):
             return string
     except Exception as e:
         traceback.print_exc()
-        pass
     return nonascii

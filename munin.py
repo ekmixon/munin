@@ -163,7 +163,7 @@ def processLine(line, debug):
         if ',' in info["commenter"]:
             info["commenter"] = info["commenter"].split(',')
         if debug:
-            print("[D] Value found in cache: %s" % cache_result)
+            print(f"[D] Value found in cache: {cache_result}")
 
 
     # If found in cache or --nocache set
@@ -224,9 +224,8 @@ def processLine(line, debug):
 
     # Wait some time for the next request
     cooldown_time = 0
-    if 'vt_queried' in info:  # could be missing on cache values
-        if info["vt_queried"]:
-            cooldown_time = max(0, WAIT_TIME - int(time.time() - start_time))
+    if 'vt_queried' in info and info["vt_queried"]:
+        cooldown_time = max(0, WAIT_TIME - int(time.time() - start_time))
 
     return info, cooldown_time
 
@@ -261,7 +260,7 @@ def processLines(lines, resultFile, nocsv=False, debug=False):
 
         # Comment on Sample
         if args.comment and info['sha256'] != "-":
-            munin_vt.commentVTSample(info['sha256'], "%s %s" % (args.p, info['comment']))
+            munin_vt.commentVTSample(info['sha256'], f"{args.p} {info['comment']}")
 
         # Download Samples
         if args.download and 'sha256' in info:
@@ -295,13 +294,13 @@ def fetchHash(line):
     :param line:
     :return:
     """
-    hashTypes = {32: 'md5', 40: 'sha1', 64: 'sha256'}
     pattern = r'((?<!FIRSTBYTES:\s)|[\b\s]|^)([0-9a-fA-F]{32}|[0-9a-fA-F]{40}|[0-9a-fA-F]{64})(\b|$)'
     hash_search = re.findall(pattern, line)
     # print hash_search
     if len(hash_search) > 0:
         hash = hash_search[0][1]
         rest = ' '.join(re.sub('({0}|;|,|:)'.format(hash), ' ', line).strip().split())
+        hashTypes = {32: 'md5', 40: 'sha1', 64: 'sha256'}
         return hash, hashTypes[len(hash)], rest
     return '', '', ''
 
@@ -315,26 +314,24 @@ def getMalShareInfo(hash):
     if MAL_SHARE_API_KEY == "-" or not MAL_SHARE_API_KEY:
         return info
     try:
-        print("Malshare URL: %s" % (MAL_SHARE_API % (MAL_SHARE_API_KEY, hash)))
+        print(f"Malshare URL: {MAL_SHARE_API % (MAL_SHARE_API_KEY, hash)}")
         response_query = requests.get(MAL_SHARE_API % (MAL_SHARE_API_KEY, hash),
                                       timeout=15,
                                       proxies=connections.PROXY,
                                       headers=FAKE_HEADERS)
         if args.debug:
-            print("[D] Querying Malshare: %s" % response_query.request.url)
+            print(f"[D] Querying Malshare: {response_query.request.url}")
         #print(response_query.content)
         response = json.loads(response_query.content)
         # If response is MD5 hash
         if 'ERROR' in response:
             info['malshare_available'] = False
-            if args.debug:
-                print("[D] Malshare response: %s" % response_query.content)
         else:
             info['malshare_available'] = True
             # Making sure that an MD5 hash is available for link generation
             info['md5'] = response['MD5']
-            if args.debug:
-                print("[D] Malshare response: %s" % response_query.content)
+        if args.debug:
+            print(f"[D] Malshare response: {response_query.content}")
     except Exception as e:
         if args.debug:
             traceback.print_exc()
@@ -357,9 +354,8 @@ def getMalwareBazarInfo(hash):
         if res['query_status'] == "ok":
             info['malware_bazar_available'] = True
             # Making sure that a sha256 hash is available for link generation
-            if 'sha256_hash' in res:
-                if res['sha256_hash'] != "":
-                    info['sha256'] = res['sha256_hash']
+            if 'sha256_hash' in res and res['sha256_hash'] != "":
+                info['sha256'] = res['sha256_hash']
     except Exception as e:
         print("Error while accessing Malware Bazar")
         if args.debug:
@@ -437,11 +433,7 @@ def getMISPInfo(hash):
     if not has_MISP:
         return info
 
-    # Check if any auth key is set
-    key_set = False
-    for m in MISP_AUTH_KEYS:
-        if m != '' and m != '-':
-            key_set = True
+    key_set = any(m not in ['', '-'] for m in MISP_AUTH_KEYS)
     if not key_set or 'pymisp' in deactivated_features:
         return info
 
@@ -452,16 +444,16 @@ def getMISPInfo(hash):
         # Get the corresponding auth key
         m_auth_key = MISP_AUTH_KEYS[c]
         if args.debug:
-            print("[D] Querying MISP: %s" % m_url)
+            print(f"[D] Querying MISP: {m_url}")
         try:
             # Preparing API request
             misp = pymisp.PyMISP(m_url, m_auth_key, args.verifycert, debug=args.debug, proxies={},cert=None,auth=None,tool='Munin : Online hash checker')
             if args.debug:
-                print("[D] Query: values=%s" % hash)
+                print(f"[D] Query: values={hash}")
             result = misp.search('attributes', type_attribute=fetchHash(hash)[1] ,value=hash)
             # Processing the result
             if result['Attribute']:
-                events_added = list()
+                events_added = []
                 if args.debug:
                     print("[D] Dump Attribute : "+json.dumps(result['Attribute'], indent=2))
                 for r in result['Attribute']:
@@ -471,20 +463,21 @@ def getMISPInfo(hash):
                     # Try to get info on the events
                     event_info = ""
                     misp_events.append('MISP%d:%s' % (c+1, r['event_id']))
-                    e_result = misp.search('events', eventid=r['event_id'])
-                    if e_result:
+                    if e_result := misp.search(
+                        'events', eventid=r['event_id']
+                    ):
                         event_info = e_result[0]['Event']['info']
-                        # too much
-                        # if args.debug:
-                           # print(json.dumps(e_result['response'], indent=2))
                     # Create MISP info object
-                    misp_info.append({
-                        'misp_nr': c+1,
-                        'event_info': event_info,
-                        'event_id': r['event_id'],
-                        'comment': r['comment'],
-                        'url': '%s/events/view/%s' % (m_url, r['event_id'])
-                    })
+                    misp_info.append(
+                        {
+                            'misp_nr': c + 1,
+                            'event_info': event_info,
+                            'event_id': r['event_id'],
+                            'comment': r['comment'],
+                            'url': f"{m_url}/events/view/{r['event_id']}",
+                        }
+                    )
+
                     events_added.append(r['event_id'])
 
             else:
@@ -495,7 +488,7 @@ def getMISPInfo(hash):
 
     info['misp_info'] = misp_info
     info['misp_events'] = ", ".join(misp_events)
-    if len(misp_events) > 0:
+    if misp_events:
         info['misp_available'] = True
 
     return info
@@ -516,13 +509,13 @@ def getHashlookup(md5, sha1):
 
     # Loop through hsahlookup instances
     hashlookup_info = []
+    tags = []
     for c, h_url in enumerate(HASHLOOKUP_URLS, start=0):
-        tags = []
         # Get the corresponding data
         h_auth_key = HASHLOOKUP_AUTH_KEYS[c]
         h_name = HASHLOOKUP_HANDLES[c]
         if args.debug:
-            print("[D] Querying Hashlookup Service {}".format(h_name))
+            print(f"[D] Querying Hashlookup Service {h_name}")
 
         h_url = h_url + '{}/{}'
 
@@ -535,7 +528,7 @@ def getHashlookup(md5, sha1):
             elif md5 != "-":
                 response = requests.get(h_url.format('md5', md5), timeout=3, proxies=connections.PROXY, headers={'Authorization': h_auth_key})
             if args.debug:
-                print("[D] Hashlookup Response Code: %s" % response.status_code)
+                print(f"[D] Hashlookup Response Code: {response.status_code}")
             if response.status_code == 200:
                 hashlookup_info.append({
                     'hashlookup_source': h_name,
@@ -585,7 +578,7 @@ def getHybridAnalysisInfo(hash):
         if args.debug:
             traceback.print_exc()
     except Exception as e:
-        print("Error while accessing Hybrid Analysis: %s" % response.content)
+        print(f"Error while accessing Hybrid Analysis: {response.content}")
         if args.debug:
             traceback.print_exc()
     finally:
@@ -605,7 +598,7 @@ def getValhalla(sha256):
         return info
     # Ready to go
     if args.debug:
-        print("[D] Querying VALHALLA: %s" % sha256)
+        print(f"[D] Querying VALHALLA: {sha256}")
     try:
 
         data = {
@@ -644,7 +637,7 @@ def downloadHybridAnalysisSample(hash):
 
         # Querying Hybrid Analysis
         if args.debug:
-            print("[D] Requesting download of sample: %s" % preparedURL)
+            print(f"[D] Requesting download of sample: {preparedURL}")
         response = requests.get(preparedURL, params={'environmentId':'100'}, headers=headers, proxies=connections.PROXY)
 
         # If the response is a json file
@@ -653,13 +646,11 @@ def downloadHybridAnalysisSample(hash):
             if args.debug:
                 print("[D] Something went wrong: " +responsejson["message"])
             return False
-        # If the content is an octet stream
         elif response.headers["Content-Type"] == "application/gzip":
             plaintextContent = gzip.decompress(response.content)
-            f_out = open(outfile, 'wb')
-            f_out.write(plaintextContent)
-            f_out.close()
-            print("[+] Downloaded sample from Hybrid-Analysis to: %s" % outfile)
+            with open(outfile, 'wb') as f_out:
+                f_out.write(plaintextContent)
+            print(f"[+] Downloaded sample from Hybrid-Analysis to: {outfile}")
 
             # Return successful
             return True
@@ -672,7 +663,7 @@ def downloadHybridAnalysisSample(hash):
         if args.debug:
             traceback.print_exc()
     except Exception as e:
-        print("Error while accessing Hybrid Analysis: %s" % response.content)
+        print(f"Error while accessing Hybrid Analysis: {response.content}")
         if args.debug:
             traceback.print_exc()
     finally:
@@ -686,7 +677,7 @@ def downloadMalwareBazarSample(hash):
     :return success: bool Download Success
     """
     # Check API Key
-    if MAL_BAZAR_API_KEY == "" or MAL_BAZAR_API_KEY == "-":
+    if MAL_BAZAR_API_KEY in ["", "-"]:
         print("You cannot download samples from Malware Bazar without an API key")
         return False
     try:
@@ -709,7 +700,7 @@ def downloadMalwareBazarSample(hash):
                     outfile = os.path.join(args.d, file.filename)
                     with open(outfile, 'wb') as f_out:
                         f_out.write(f.read(file.filename))
-                    print("[+] Downloaded sample from Malware Bazar to: %s" % outfile)
+                    print(f"[+] Downloaded sample from Malware Bazar to: {outfile}")
 
                 return True
 
@@ -729,12 +720,12 @@ def getTotalHashInfo(sha1):
     info = {'totalhash_available': False}
     try:
         # Prepare request
-        preparedURL = "%s?%s" % (TOTAL_HASH_URL, sha1)
+        preparedURL = f"{TOTAL_HASH_URL}?{sha1}"
         # Set user agent string
         # headers = {'User-Agent': ''}
         # Querying Hybrid Analysis
         if args.debug:
-            print("[D] Querying Totalhash: %s" % preparedURL)
+            print(f"[D] Querying Totalhash: {preparedURL}")
         response = requests.get(preparedURL, proxies=connections.PROXY)
         # print "Respone: '%s'" % response.content
         if response.content and \
@@ -746,7 +737,7 @@ def getTotalHashInfo(sha1):
         if args.debug:
             traceback.print_exc()
     except Exception as e:
-        print("Error while accessing Totalhash: %s" % response.content)
+        print(f"Error while accessing Totalhash: {response.content}")
         if args.debug:
             traceback.print_exc()
     return info
@@ -763,10 +754,7 @@ def getURLhaus(md5, sha256):
     if 'md5' == "-" and 'sha256' == "-":
         return info
     try:
-        if sha256:
-            data = {"sha256_hash": sha256}
-        else:
-            data = {"md5_hash": md5}
+        data = {"sha256_hash": sha256} if sha256 else {"md5_hash": md5}
         response = requests.post(URL_HAUS_URL, data=data, timeout=3, proxies=connections.PROXY)
         print("Respone: '%s'" % response.json())
         res = response.json()
@@ -828,15 +816,15 @@ def getAnyRun(sha256):
     if sha256 == "-":
         return info
     try:
-        
+
         if args.debug:
             print("[D] Querying Anyrun")
         cfscraper = cfscrape.create_scraper()
         response = cfscraper.get(URL_ANYRUN % sha256, proxies=connections.PROXY)
-       
+
 
         if args.debug:
-            print("[D] Anyrun Response Code: %s" %response.status_code)
+            print(f"[D] Anyrun Response Code: {response.status_code}")
 
         if response.status_code == 200:
             info['anyrun_available'] = True
@@ -862,20 +850,21 @@ def getVirusBayInfo(hash):
         return info
     try:
         # Prepare request
-        preparedURL = "%s%s" % (VIRUSBAY_URL, hash)
+        preparedURL = f"{VIRUSBAY_URL}{hash}"
         if args.debug:
-            print("[D] Querying Virusbay: %s" % preparedURL)
+            print(f"[D] Querying Virusbay: {preparedURL}")
         response = requests.get(preparedURL, proxies=connections.PROXY).json()
         # If response has the correct content
         info['virusbay_available'] = False
-        #print(response)
-        tags = []
         if response['search'] != []:
             info['virusbay_available'] = True
-            for tag in response['search'][0]['tags']:
-                tags.append(tag['name'])
+                    #print(response)
+            tags = [tag['name'] for tag in response['search'][0]['tags']]
             info['vb_tags'] = tags
-            info['vb_link'] = "https://beta.virusbay.io/sample/browse/%s" % response['search'][0]['md5']
+            info[
+                'vb_link'
+            ] = f"https://beta.virusbay.io/sample/browse/{response['search'][0]['md5']}"
+
     except Exception as e:
         if args.debug:
             print("Error while accessing VirusBay")
@@ -893,22 +882,30 @@ def peChecks(info, infos):
     # Some static values
     SIGNER_WHITELIST = ["Microsoft Windows", "Microsoft Corporation"]
     # Imphash check
-    imphash_count = 0
-    for i in infos:
-        if 'imphash' in i and 'imphash' in info:
-            if i['imphash'] != "-" and i['imphash'] == info['imphash']:
-                imphash_count += 1
+    imphash_count = sum(
+        'imphash' in i
+        and 'imphash' in info
+        and i['imphash'] != "-"
+        and i['imphash'] == info['imphash']
+        for i in infos
+    )
+
     if imphash_count > 1:
         printHighlighted("[!] Imphash - appeared %d times in this batch %s" %
                          (imphash_count, info['imphash']))
     # Signed Appeared multiple times
     try:
-        signer_count = 0
-        for s in infos:
-            if 'signer' in s and 'signer' in info:
-                if s['signer'] != "-" and s['signer'] and s['signer'] == info['signer'] and \
-                        not any(s in info['signer'] for s in SIGNER_WHITELIST):
-                    signer_count += 1
+        signer_count = sum(
+            1
+            for s in infos
+            if 'signer' in s
+            and 'signer' in info
+            and s['signer'] != "-"
+            and s['signer']
+            and s['signer'] == info['signer']
+            and all(s not in info['signer'] for s in SIGNER_WHITELIST)
+        )
+
         if signer_count > 1:
             printHighlighted("[!] Signer - appeared %d times in this batch %s" %
                              (signer_count, info['signer'].encode('raw-unicode-escape')))
@@ -926,85 +923,80 @@ def platformChecks(info):
     """
     try:
         # MISP results
-        if 'misp_available' in info:
-            if info['misp_available']:
-                for e in info['misp_info']:
-                    printHighlighted("[!] MISP event found EVENT_ID: {0} EVENT_INFO: {1} URL: {2}".format(
-                        e['event_id'], e['event_info'], e['url'])
-                    )
+        if 'misp_available' in info and info['misp_available']:
+            for e in info['misp_info']:
+                printHighlighted("[!] MISP event found EVENT_ID: {0} EVENT_INFO: {1} URL: {2}".format(
+                    e['event_id'], e['event_info'], e['url'])
+                )
     except KeyError as e:
         if args.debug:
             traceback.print_exc()
     try:
         # Malware Share availability
-        if 'malshare_available' in info:
-            if info['malshare_available']:
-                printHighlighted("[!] Sample is available on malshare.com URL: {0}{1}".format(
-                    MAL_SHARE_LINK, info['md5']))
+        if 'malshare_available' in info and info['malshare_available']:
+            printHighlighted("[!] Sample is available on malshare.com URL: {0}{1}".format(
+                MAL_SHARE_LINK, info['md5']))
     except KeyError as e:
         if args.debug:
             traceback.print_exc()
     try:
         # Malware Bazar availability
-        if 'malware_bazar_available' in info:
-            if info['malware_bazar_available']:
-                printHighlighted("[!] Sample is available on Malware Bazar URL: {0}".format(
-                    MALWARE_BAZAR_LINK % info['sha256']))
+        if (
+            'malware_bazar_available' in info
+            and info['malware_bazar_available']
+        ):
+            printHighlighted("[!] Sample is available on Malware Bazar URL: {0}".format(
+                MALWARE_BAZAR_LINK % info['sha256']))
     except KeyError as e:
         if args.debug:
             traceback.print_exc()
     try:
         # Hybrid Analysis availability
-        if 'hybrid_available' in info:
-            if info['hybrid_available']:
-                printHighlighted("[!] Sample is on hybrid-analysis.com SCORE: {0} URL: {1}/{2}".format(
-                    info["hybrid_score"], URL_HA, info['sha256']))
+        if 'hybrid_available' in info and info['hybrid_available']:
+            printHighlighted("[!] Sample is on hybrid-analysis.com SCORE: {0} URL: {1}/{2}".format(
+                info["hybrid_score"], URL_HA, info['sha256']))
     except KeyError as e:
         if args.debug:
             traceback.print_exc()
     try:
         # Intezer availability
-        if 'intezer_available' in info:
-            if info['intezer_available']:
-                printHighlighted("[!] Sample is on Intezer URL: {0}".format((INTEZER_ANALYSIS_URL % info['sha256'])))
+        if 'intezer_available' in info and info['intezer_available']:
+            printHighlighted("[!] Sample is on Intezer URL: {0}".format((INTEZER_ANALYSIS_URL % info['sha256'])))
     except KeyError as e:
         if args.debug:
             traceback.print_exc()
     try:
         # URLhaus availability
-        if 'urlhaus_available' in info:
-            if info['urlhaus_available']:
-                printHighlighted("[!] Sample on URLHaus URL: %s" % info['urlhaus_download'])
-                printHighlighted("[!] URLHaus info TYPE: %s FIRST_SEEN: %s LAST_SEEN: %s URL_COUNT: %s" % (
-                    info['urlhaus_type'],
-                    info['urlhaus_first'],
-                    info['urlhaus_last'],
-                    info['urlhaus_url_count']
-                ))
-                c = 0
-                for url in info['urlhaus_urls']:
-                    printHighlighted("[!] URLHaus STATUS: %s URL: %s" % (url['url_status'], url['url']))
-                    c += 1
-                    if c > URL_HAUS_MAX_URLS:
-                        break
+        if 'urlhaus_available' in info and info['urlhaus_available']:
+            printHighlighted(f"[!] Sample on URLHaus URL: {info['urlhaus_download']}")
+            printHighlighted(
+                f"[!] URLHaus info TYPE: {info['urlhaus_type']} FIRST_SEEN: {info['urlhaus_first']} LAST_SEEN: {info['urlhaus_last']} URL_COUNT: {info['urlhaus_url_count']}"
+            )
+
+            c = 0
+            for url in info['urlhaus_urls']:
+                printHighlighted(f"[!] URLHaus STATUS: {url['url_status']} URL: {url['url']}")
+                c += 1
+                if c > URL_HAUS_MAX_URLS:
+                    break
     except KeyError as e:
         if args.debug:
             traceback.print_exc()
     try:
         # AnyRun availability
-        if 'anyrun_available' in info:
-            if info['anyrun_available']:
-                printHighlighted("[!] Sample on ANY.RUN URL: %s" % (URL_ANYRUN % info['sha256']))
+        if 'anyrun_available' in info and info['anyrun_available']:
+            printHighlighted(f"[!] Sample on ANY.RUN URL: {URL_ANYRUN % info['sha256']}")
     except KeyError as e:
         if args.debug:
             traceback.print_exc()
     try:
         # CAPE availability
-        if 'cape_available' in info:
-            if info['cape_available']:
-                for report_id in info['cape_reports']:
-                    printHighlighted("[!] Sample on CAPE sandbox URL: https://capesandbox.com/analysis/%s/" %
-                                     report_id)
+        if 'cape_available' in info and info['cape_available']:
+            for report_id in info['cape_reports']:
+                printHighlighted(
+                    f"[!] Sample on CAPE sandbox URL: https://capesandbox.com/analysis/{report_id}/"
+                )
+
     except KeyError as e:
         if args.debug:
             traceback.print_exc()
@@ -1026,7 +1018,8 @@ def platformChecks(info):
                 # Public Rule or Nextron Commercial Feed
                 feed = "commercial feed only"
                 if 'DEMO' in m['tags']:
-                    feed = "public rule LINK: https://github.com/Neo23x0/signature-base/search?q=%s" % m['rulename']
+                    feed = f"public rule LINK: https://github.com/Neo23x0/signature-base/search?q={m['rulename']}"
+
                 printHighlighted("[!] VALHALLA YARA rule match "
                                  "RULE: %s TYPE: %s AV: %s / %s TS: %s" %
                                  (m['rulename'], feed, m['positives'], m['total'], m['timestamp']))
@@ -1035,12 +1028,12 @@ def platformChecks(info):
             traceback.print_exc()
     try:
         # Hashlookup availability
-        if 'hashlookup_available' in info:
-            if info['hashlookup_available']:
-                for h in info['hashlookup_info']:
-                    printHighlighted("[!] Known File, details available on {} Hashlookup: {}".format(h['hashlookup_source'],
-                        h['source_url'])
-                    )
+        if 'hashlookup_available' in info and info['hashlookup_available']:
+            for h in info['hashlookup_info']:
+                printHighlighted(
+                    f"[!] Known File, details available on {h['hashlookup_source']} Hashlookup: {h['source_url']}"
+                )
+
 
     except KeyError as e:
         if args.debug:
@@ -1076,12 +1069,21 @@ def inCache(hashVal):
     :param hashVal: hash value used as reference
     :return: cache element or None
     """
-    if not hashVal:
-        return None
-    for c in cache:
-        if c['hash'] == hashVal or c['md5'] == hashVal or c['sha1'] == hashVal or c['sha256'] == hashVal:
-            return c
-    return None
+    return (
+        next(
+            (
+                c
+                for c in cache
+                if c['hash'] == hashVal
+                or c['md5'] == hashVal
+                or c['sha1'] == hashVal
+                or c['sha256'] == hashVal
+            ),
+            None,
+        )
+        if hashVal
+        else None
+    )
 
 def getFileData(filePath):
     """
@@ -1122,11 +1124,8 @@ def generateHashes(fileData):
 
 @app.route('/<string>')
 def lookup(string):
-    # Is cached
-    is_cached = False
     hashVal, hashType, comment = fetchHash(string)
-    if inCache(hashVal):
-        is_cached = True
+    is_cached = bool(inCache(hashVal))
     # Still in VT cooldown
     if flask_cache.get('vt-cooldown') and not is_cached:
         return json.dumps({'status': 'VT cooldown active'}), 429

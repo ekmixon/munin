@@ -67,7 +67,7 @@ def fetch_ip_and_domains(line):
 
 def is_valid_tld(tld):
     try:
-        dns.resolver.query(tld + '.', 'SOA')
+        dns.resolver.query(f'{tld}.', 'SOA')
         return True
     except dns.resolver.NXDOMAIN:
         return False
@@ -75,16 +75,12 @@ def is_valid_tld(tld):
 
 def is_ip(value):
     ip_pattern = r'^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\b$'
-    if re.match(ip_pattern, value):
-        return True
-    return False
+    return bool(re.match(ip_pattern, value))
 
 
 def is_private(ip):
     ip = IP(ip)
-    if ip.iptype() == "PRIVATE":
-        return True
-    return False
+    return ip.iptype() == "PRIVATE"
 
 
 def is_resolvable(domain):
@@ -188,11 +184,8 @@ def process_lines(lines, debug=False):
             continue
 
         # Elements
-        for i in ips:
-            elements.append({"value": i, "type": "ip"})
-        for h in domains:
-            elements.append({"value": h, "type": "domain"})
-
+        elements.extend({"value": i, "type": "ip"} for i in ips)
+        elements.extend({"value": h, "type": "domain"} for h in domains)
     return elements
 
 
